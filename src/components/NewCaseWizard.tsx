@@ -1,0 +1,351 @@
+import React, { useState, useRef } from 'react';
+import { 
+  PlusCircle, 
+  UploadCloud, 
+  FileText, 
+  Film, 
+  Trash2, 
+  ArrowRight, 
+  CheckCircle2, 
+  Sparkles, 
+  Camera, 
+  FolderPlus,
+  Info
+} from 'lucide-react';
+import { Evidence, EvidenceType } from '../types';
+
+interface NewCaseWizardProps {
+  onCaseCreated: (newCaseId: string) => void;
+  onCancel: () => void;
+}
+
+export const NewCaseWizard: React.FC<NewCaseWizardProps> = ({
+  onCaseCreated,
+  onCancel
+}) => {
+  const [step, setStep] = useState<number>(1);
+  const [title, setTitle] = useState<string>('Warehouse Door Access Incident');
+  const [description, setDescription] = useState<string>('Motion alarm tripped during scheduled lockdown in Secure Bay 4.');
+  const [investigator, setInvestigator] = useState<string>('Investigator Sarah Vance');
+  const [evidenceList, setEvidenceList] = useState<Evidence[]>([
+    {
+      id: 'init-ev-1',
+      name: 'warehouse_camera.mp4',
+      type: 'video',
+      size: '24.2 MB',
+      timestamp: '10:41:00 - 10:42:30',
+      summary: 'Corridor CCTV camera covering Secure Bay 4 door.',
+      uploadedAt: 'Just now'
+    },
+    {
+      id: 'init-ev-2',
+      name: 'access_log.csv',
+      type: 'csv',
+      size: '124 KB',
+      timestamp: '10:30:00 - 10:50:00',
+      summary: 'Door sensor contact and PIR telemetry logs.',
+      uploadedAt: 'Just now'
+    },
+    {
+      id: 'init-ev-3',
+      name: 'security_report.pdf',
+      type: 'pdf',
+      size: '1.4 MB',
+      timestamp: '10:43:00',
+      summary: 'Shift supervisor preliminary dispatch note.',
+      uploadedAt: 'Just now'
+    }
+  ]);
+  const [isCreating, setIsCreating] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newItems: Evidence[] = (Array.from(files) as File[]).map((file, idx) => {
+      let ext = file.name.split('.').pop()?.toLowerCase() || '';
+      let type: EvidenceType = 'text';
+      if (['mp4', 'mov', 'avi'].includes(ext)) type = 'video';
+      else if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) type = 'image';
+      else if (['pdf'].includes(ext)) type = 'pdf';
+      else if (['csv'].includes(ext)) type = 'csv';
+      else if (['log', 'txt', 'json'].includes(ext)) type = 'log';
+
+      return {
+        id: `upload-${Date.now()}-${idx}`,
+        name: file.name,
+        type,
+        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+        summary: `Uploaded ${file.name} artifact for multimodal investigation.`,
+        uploadedAt: 'Just now'
+      };
+    });
+
+    setEvidenceList(prev => [...prev, ...newItems]);
+  };
+
+  const removeEvidence = (id: string) => {
+    setEvidenceList(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handleStartInvestigation = async () => {
+    if (!title.trim()) return;
+    setIsCreating(true);
+
+    try {
+      // 1. Create case via API
+      const res = await fetch('/api/cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          description,
+          investigator
+        })
+      });
+      const createdCase = await res.json();
+
+      // 2. Add evidence items
+      for (const ev of evidenceList) {
+        await fetch(`/api/cases/${createdCase.id}/evidence`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(ev)
+        });
+      }
+
+      // 3. Trigger initial AI analysis
+      await fetch(`/api/cases/${createdCase.id}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      onCaseCreated(createdCase.id);
+    } catch (err) {
+      console.error(err);
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div id="new-case-wizard" className="max-w-3xl mx-auto py-6 px-4">
+      {/* 3-Step Progress Indicator */}
+      <div className="flex items-center justify-between mb-8 max-w-md mx-auto">
+        <div className="flex items-center gap-2">
+          <span className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${
+            step >= 1 ? 'bg-cyan-600 text-white shadow-xs' : 'bg-slate-100 text-slate-400 border border-slate-200'
+          }`}>
+            1
+          </span>
+          <span className={`text-xs font-semibold ${step >= 1 ? 'text-slate-900' : 'text-slate-400'}`}>
+            Name Investigation
+          </span>
+        </div>
+
+        <div className="w-10 h-0.5 bg-slate-200" />
+
+        <div className="flex items-center gap-2">
+          <span className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${
+            step >= 2 ? 'bg-cyan-600 text-white shadow-xs' : 'bg-slate-100 text-slate-400 border border-slate-200'
+          }`}>
+            2
+          </span>
+          <span className={`text-xs font-semibold ${step >= 2 ? 'text-slate-900' : 'text-slate-400'}`}>
+            Add Evidence
+          </span>
+        </div>
+
+        <div className="w-10 h-0.5 bg-slate-200" />
+
+        <div className="flex items-center gap-2">
+          <span className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${
+            step >= 3 ? 'bg-cyan-600 text-white shadow-xs' : 'bg-slate-100 text-slate-400 border border-slate-200'
+          }`}>
+            3
+          </span>
+          <span className={`text-xs font-semibold ${step >= 3 ? 'text-slate-900' : 'text-slate-400'}`}>
+            Start Investigation
+          </span>
+        </div>
+      </div>
+
+      {/* Step 1: Name Investigation */}
+      {step === 1 && (
+        <div className="bg-white/90 border border-slate-200 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 shadow-xl space-y-6 animate-in fade-in duration-200">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Start a New Investigation</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Give your investigation a clear name and briefly describe what triggered the alert.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Investigation Name <span className="text-cyan-600">*</span>
+              </label>
+              <input
+                id="new-case-title-input"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Example: Warehouse Door Incident"
+                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-200 shadow-2xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Description (Optional)
+              </label>
+              <textarea
+                id="new-case-desc-input"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                placeholder="Briefly describe what happened..."
+                className="w-full bg-white border border-slate-300 rounded-2xl p-3 text-xs text-slate-900 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-200 shadow-2xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Lead Investigator
+              </label>
+              <input
+                type="text"
+                value={investigator}
+                onChange={(e) => setInvestigator(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-200 shadow-2xs"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              id="wizard-step1-continue-btn"
+              onClick={() => setStep(2)}
+              disabled={!title.trim()}
+              className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white font-bold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+            >
+              <span>Continue</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Add Evidence */}
+      {step === 2 && (
+        <div className="bg-white/90 border border-slate-200 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 shadow-xl space-y-6 animate-in fade-in duration-200">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Add Evidence</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Add anything that may help us understand what happened (video, images, PDFs, reports, or logs).
+            </p>
+          </div>
+
+          {/* Upload Dropzone Card */}
+          <div 
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-slate-300 hover:border-cyan-500 bg-slate-50/70 hover:bg-slate-50 rounded-3xl p-8 text-center cursor-pointer transition-all"
+          >
+            <input 
+              ref={fileInputRef}
+              type="file" 
+              multiple 
+              accept=".mp4,.mov,.jpg,.jpeg,.png,.pdf,.txt,.csv,.json"
+              onChange={handleFileUpload} 
+              className="hidden" 
+            />
+            <div className="w-12 h-12 mx-auto rounded-full bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-800 mb-3">
+              <UploadCloud className="w-6 h-6" />
+            </div>
+            <h3 className="text-sm font-bold text-slate-900">Upload Evidence Files</h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+              Drop files here or click to browse. Supports MP4, MOV, JPG, PNG, PDF, CSV, JSON, TXT.
+            </p>
+            <div className="mt-4 flex items-center justify-center gap-3">
+              <span className="px-4 py-2 rounded-xl bg-cyan-50 hover:bg-cyan-100 text-cyan-800 font-bold text-xs border border-cyan-200 shadow-2xs">
+                Browse Files
+              </span>
+            </div>
+          </div>
+
+          {/* Current Evidence List */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Evidence Files Attached ({evidenceList.length})
+              </span>
+            </div>
+
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {evidenceList.map((item) => (
+                <div 
+                  key={item.id}
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200 text-xs hover:bg-white transition-colors shadow-2xs"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-cyan-100 border border-cyan-200 flex items-center justify-center text-cyan-800 shrink-0">
+                      {item.type === 'video' ? <Film className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-mono text-slate-900 font-semibold truncate">{item.name}</p>
+                      <p className="text-[11px] text-slate-500">{item.type.toUpperCase()} • {item.size}</p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeEvidence(item.id);
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Wizard Footer */}
+          <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+            <button
+              onClick={() => setStep(1)}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all cursor-pointer"
+            >
+              Back
+            </button>
+            <button
+              id="wizard-step2-start-btn"
+              disabled={evidenceList.length === 0 || isCreating}
+              onClick={handleStartInvestigation}
+              className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white font-bold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+            >
+              {isCreating ? (
+                <>
+                  <Sparkles className="w-4 h-4 animate-spin" />
+                  <span>Processing Evidence with Gemini...</span>
+                </>
+              ) : (
+                <>
+                  <span>Start Investigation</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

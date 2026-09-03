@@ -1,0 +1,6 @@
+{
+  "name": "IncidentIQ",
+  "description": "Secure, human-supervised, evidence-driven AI incident investigation workstation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
