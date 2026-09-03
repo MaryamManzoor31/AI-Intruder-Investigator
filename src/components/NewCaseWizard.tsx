@@ -10,9 +10,13 @@ import {
   Sparkles, 
   Camera, 
   FolderPlus,
-  Info
+  Info,
+  Loader2,
+  Video,
+  Layers
 } from 'lucide-react';
 import { Evidence, EvidenceType } from '../types';
+import { extractKeyframesFromVideo, fileToBase64 } from '../utils/videoProcessor';
 
 interface NewCaseWizardProps {
   onCaseCreated: (newCaseId: string) => void;
@@ -57,32 +61,114 @@ export const NewCaseWizard: React.FC<NewCaseWizardProps> = ({
     }
   ]);
   const [isCreating, setIsCreating] = useState<boolean>(false);
+  const [isProcessingMedia, setIsProcessingMedia] = useState<boolean>(false);
+  const [mediaProgressMsg, setMediaProgressMsg] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newItems: Evidence[] = (Array.from(files) as File[]).map((file, idx) => {
-      let ext = file.name.split('.').pop()?.toLowerCase() || '';
+    setIsProcessingMedia(true);
+    const fileArray = Array.from(files) as File[];
+    const processedItems: Evidence[] = [];
+
+    for (let idx = 0; idx < fileArray.length; idx++) {
+      const file = fileArray[idx];
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
       let type: EvidenceType = 'text';
-      if (['mp4', 'mov', 'avi'].includes(ext)) type = 'video';
+      if (['mp4', 'mov', 'webm', 'avi'].includes(ext)) type = 'video';
       else if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) type = 'image';
       else if (['pdf'].includes(ext)) type = 'pdf';
       else if (['csv'].includes(ext)) type = 'csv';
       else if (['log', 'txt', 'json'].includes(ext)) type = 'log';
 
-      return {
-        id: `upload-${Date.now()}-${idx}`,
-        name: file.name,
-        type,
-        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        summary: `Uploaded ${file.name} artifact for multimodal investigation.`,
-        uploadedAt: 'Just now'
-      };
-    });
+      if (type === 'video') {
+        setMediaProgressMsg(`Processing "${file.name}": sampling keyframes for AI detection camera...`);
+        
+        let keyframes: any[] = [];
+        let duration = 0;
+        let videoBase64: string | undefined = undefined;
+        const videoUrl = URL.createObjectURL(file);
 
-    setEvidenceList(prev => [...prev, ...newItems]);
+        try {
+          // Fast keyframe extraction (under 1s)
+          const extraction = await extractKeyframesFromVideo(file, 4);
+          keyframes = extraction.keyframes;
+          duration = Math.round(extraction.duration);
+        } catch (err) {
+          console.warn('Keyframe extraction warning:', err);
+        }
+
+        // Only convert to raw base64 if small (< 3MB) to keep processing instant
+        if (file.size <= 3 * 1024 * 1024) {
+          try {
+            videoBase64 = await fileToBase64(file);
+          } catch (err) {
+            console.warn('Video base64 conversion warning:', err);
+          }
+        }
+
+        processedItems.push({
+          id: `upload-${Date.now()}-${idx}`,
+          name: file.name,
+          type: 'video',
+          size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+          summary: `Video artifact (${duration ? `${duration}s` : 'surveillance clip'}). AI detection camera feed ready.`,
+          videoUrl,
+          videoBase64,
+          videoMimeType: file.type || 'video/mp4',
+          keyframes,
+          duration,
+          previewContent: keyframes.length > 0 ? keyframes[0].dataUrl : undefined,
+          keyDetails: [
+            duration ? `Video duration: ${duration} seconds` : 'Custom video clip',
+            `${keyframes.length} visual keyframes extracted for AI detection`,
+            'Real-time suspicious tracking & object detection enabled'
+          ],
+          uploadedAt: 'Just now'
+        });
+      } else if (type === 'image') {
+        setMediaProgressMsg(`Processing image "${file.name}"...`);
+        let previewContent: string | undefined = undefined;
+        try {
+          previewContent = await fileToBase64(file);
+        } catch (err) {}
+
+        processedItems.push({
+          id: `upload-${Date.now()}-${idx}`,
+          name: file.name,
+          type: 'image',
+          size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+          summary: `Uploaded image asset for visual correlation.`,
+          previewContent,
+          keyDetails: ['Custom image evidence artifact', 'Visual entity recognition ready'],
+          uploadedAt: 'Just now'
+        });
+      } else {
+        setMediaProgressMsg(`Reading file "${file.name}"...`);
+        let previewContent = '';
+        try {
+          const text = await file.text();
+          previewContent = text.slice(0, 3000);
+        } catch (err) {}
+
+        processedItems.push({
+          id: `upload-${Date.now()}-${idx}`,
+          name: file.name,
+          type,
+          size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+          summary: `Uploaded ${file.name} artifact for investigation correlation.`,
+          previewContent: previewContent || undefined,
+          keyDetails: ['Uploaded by investigator', 'Log & telemetry record'],
+          uploadedAt: 'Just now'
+        });
+      }
+    }
+
+    setEvidenceList(prev => [...prev, ...processedItems]);
+    setIsProcessingMedia(false);
+    setMediaProgressMsg('');
   };
 
   const removeEvidence = (id: string) => {
@@ -254,29 +340,40 @@ export const NewCaseWizard: React.FC<NewCaseWizardProps> = ({
 
           {/* Upload Dropzone Card */}
           <div 
-            onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-slate-300 hover:border-cyan-500 bg-slate-50/70 hover:bg-slate-50 rounded-3xl p-8 text-center cursor-pointer transition-all"
+            onClick={() => !isProcessingMedia && fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-3xl p-7 text-center transition-all ${
+              isProcessingMedia 
+                ? 'border-cyan-400 bg-cyan-50/50 cursor-wait' 
+                : 'border-slate-300 hover:border-cyan-500 bg-slate-50/70 hover:bg-slate-50 cursor-pointer'
+            }`}
           >
             <input 
               ref={fileInputRef}
               type="file" 
               multiple 
-              accept=".mp4,.mov,.jpg,.jpeg,.png,.pdf,.txt,.csv,.json"
+              accept=".mp4,.mov,.webm,.jpg,.jpeg,.png,.pdf,.txt,.csv,.json"
               onChange={handleFileUpload} 
               className="hidden" 
             />
             <div className="w-12 h-12 mx-auto rounded-full bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-800 mb-3">
-              <UploadCloud className="w-6 h-6" />
+              {isProcessingMedia ? <Loader2 className="w-6 h-6 animate-spin text-cyan-600" /> : <UploadCloud className="w-6 h-6" />}
             </div>
-            <h3 className="text-sm font-bold text-slate-900">Upload Evidence Files</h3>
+            <h3 className="text-sm font-bold text-slate-900">
+              {isProcessingMedia ? 'Processing Media...' : 'Upload Evidence Files (Videos, Images, Logs)'}
+            </h3>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Drop files here or click to browse. Supports MP4, MOV, JPG, PNG, PDF, CSV, JSON, TXT.
+              {isProcessingMedia 
+                ? mediaProgressMsg 
+                : 'Drop files here or click to browse. Custom videos are automatically processed via Option A (Keyframe Extraction) and Option B (Multimodal Stream).'}
             </p>
-            <div className="mt-4 flex items-center justify-center gap-3">
-              <span className="px-4 py-2 rounded-xl bg-cyan-50 hover:bg-cyan-100 text-cyan-800 font-bold text-xs border border-cyan-200 shadow-2xs">
-                Browse Files
-              </span>
-            </div>
+            {!isProcessingMedia && (
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <span className="px-4 py-2 rounded-xl bg-cyan-50 hover:bg-cyan-100 text-cyan-800 font-bold text-xs border border-cyan-200 shadow-2xs flex items-center gap-1.5">
+                  <Video className="w-3.5 h-3.5" />
+                  <span>Select Video / Files</span>
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Current Evidence List */}
@@ -287,31 +384,65 @@ export const NewCaseWizard: React.FC<NewCaseWizardProps> = ({
               </span>
             </div>
 
-            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
               {evidenceList.map((item) => (
                 <div 
                   key={item.id}
-                  className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200 text-xs hover:bg-white transition-colors shadow-2xs"
+                  className="p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200 text-xs hover:bg-white transition-colors shadow-2xs space-y-2.5"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-cyan-100 border border-cyan-200 flex items-center justify-center text-cyan-800 shrink-0">
-                      {item.type === 'video' ? <Film className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-cyan-100 border border-cyan-200 flex items-center justify-center text-cyan-800 shrink-0">
+                        {item.type === 'video' ? <Film className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-mono text-slate-900 font-semibold truncate">{item.name}</p>
+                          {item.keyframes && item.keyframes.length > 0 && (
+                            <span className="text-[10px] font-semibold font-mono bg-cyan-100 text-cyan-800 border border-cyan-200 px-1.5 py-0.2 rounded-md">
+                              Option A & B
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          {item.type.toUpperCase()} • {item.size} {item.duration ? `• ${item.duration}s clip` : ''}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-mono text-slate-900 font-semibold truncate">{item.name}</p>
-                      <p className="text-[11px] text-slate-500">{item.type.toUpperCase()} • {item.size}</p>
-                    </div>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeEvidence(item.id);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeEvidence(item.id);
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {/* Visual keyframe strip if video keyframes extracted */}
+                  {item.keyframes && item.keyframes.length > 0 && (
+                    <div className="pt-2 border-t border-slate-200/70">
+                      <div className="flex items-center justify-between text-[10px] font-semibold text-slate-500 mb-1.5 font-mono">
+                        <span className="flex items-center gap-1">
+                          <Layers className="w-3 h-3 text-cyan-600" />
+                          <span>Extracted Visual Keyframes ({item.keyframes.length})</span>
+                        </span>
+                        <span className="text-cyan-700">Ready for Gemini multimodal audit</span>
+                      </div>
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {item.keyframes.map((kf, i) => (
+                          <div key={i} className="relative aspect-video rounded-lg overflow-hidden border border-slate-300 bg-slate-950 group">
+                            <img src={kf.dataUrl} alt={`Keyframe ${kf.timestamp}`} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-0.5 right-0.5 bg-slate-950/80 px-1 rounded text-[9px] font-mono text-cyan-300">
+                              {kf.timestamp}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

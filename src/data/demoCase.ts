@@ -238,6 +238,68 @@ Action Taken: Incident flagged for AI investigation workstation.`,
       successfulAction: 'Correlated secondary turnstile logs with shift roster',
       outcome: 'Identified off-shift engineer; updated access protocol'
     }
+  ],
+  detectedEntities: [
+    {
+      id: 'det-01',
+      trackId: 'TRK-0842',
+      label: 'Person A (Suspicious Movement)',
+      category: 'person',
+      confidence: 94,
+      threatStatus: 'SUSPICIOUS',
+      timestamp: '10:41:18',
+      timeSeconds: 18,
+      box: { top: 38, left: 32, width: 14, height: 44 },
+      attributes: ['Dark maintenance attire', 'Hood/cap concealing face', 'Rapid pace towards portal'],
+      behaviorFlags: ['Off-hours loitering', 'Tampering with card reader', 'Unscheduled access attempt'],
+      notes: 'Unrecognized individual approaching Secure Bay 4 door during non-operational hours.',
+      isSuspicious: true
+    },
+    {
+      id: 'det-02',
+      trackId: 'OBJ-0194',
+      label: 'Unidentified Object (Carried Container)',
+      category: 'unidentified_object',
+      confidence: 89,
+      threatStatus: 'ANOMALOUS',
+      timestamp: '10:41:20',
+      timeSeconds: 20,
+      box: { top: 56, left: 41, width: 9, height: 14 },
+      attributes: ['Heavy matte dark case', 'Non-standard latch mechanism', 'No facility asset barcode'],
+      behaviorFlags: ['Unidentified object introduced to secure zone', 'Contents unverified'],
+      notes: 'Cannot identify object classification from catalog. Non-standard diagnostic box with unknown contents.',
+      isSuspicious: true
+    },
+    {
+      id: 'det-03',
+      trackId: 'PRT-004',
+      label: 'Secure Access Portal (Bay 4)',
+      category: 'door_portal',
+      confidence: 97,
+      threatStatus: 'RESTRICTED',
+      timestamp: '10:41:18',
+      timeSeconds: 18,
+      box: { top: 35, left: 42, width: 16, height: 45 },
+      attributes: ['Heavy steel security door', 'Magnetic interlock', 'PIR zone boundary'],
+      behaviorFlags: ['Unscheduled door open cycle', 'Motion alarm tripped'],
+      notes: 'Monitored perimeter barrier to restricted logistics zone.',
+      isSuspicious: false
+    },
+    {
+      id: 'det-04',
+      trackId: 'TRM-012',
+      label: 'Biometric Proximity Terminal',
+      category: 'access_terminal',
+      confidence: 93,
+      threatStatus: 'CLEAR',
+      timestamp: '10:41:14',
+      timeSeconds: 14,
+      box: { top: 52, left: 34, width: 4, height: 10 },
+      attributes: ['RFID 13.56 MHz reader', 'Cyan status LED'],
+      behaviorFlags: ['Pulse registered 4s before entry'],
+      notes: 'Reader triggered without badge ID correlation in initial logs.',
+      isSuspicious: false
+    }
   ]
 };
 

@@ -5,6 +5,13 @@
 
 export type EvidenceType = 'video' | 'image' | 'pdf' | 'log' | 'csv' | 'text';
 
+export interface VideoFrameSample {
+  timestamp: string; // e.g. "00:04"
+  timeSeconds: number; // e.g. 4
+  dataUrl: string; // "data:image/jpeg;base64,..."
+  base64Data?: string; // raw base64 string
+}
+
 export interface Evidence {
   id: string;
   name: string;
@@ -13,6 +20,11 @@ export interface Evidence {
   timestamp?: string;
   summary: string;
   url?: string;
+  videoUrl?: string; // Direct or Object URL for browser video playback
+  videoBase64?: string; // Option B: Full video base64
+  videoMimeType?: string; // Option B: e.g. "video/mp4", "video/webm"
+  keyframes?: VideoFrameSample[]; // Option A: Extracted video keyframes
+  duration?: number; // Video duration in seconds
   previewContent?: string; // Text snippet, log sample, or SVG/base64 preview
   keyDetails?: string[];
   uploadedAt: string;
@@ -133,6 +145,38 @@ export interface LearningRecord {
   createdAt: string;
 }
 
+export type DetectionCategory = 
+  | 'person' 
+  | 'unidentified_object' 
+  | 'vehicle' 
+  | 'access_terminal' 
+  | 'tool_equipment' 
+  | 'door_portal';
+
+export type ThreatStatus = 'CLEAR' | 'SUSPICIOUS' | 'ANOMALOUS' | 'RESTRICTED';
+
+export interface DetectedEntity {
+  id: string;
+  trackId: string; // e.g. "TRK-0842"
+  label: string; // e.g. "Person (Suspicious Movement)" or "Unidentified Object"
+  category: DetectionCategory;
+  confidence: number; // 0-99
+  threatStatus: ThreatStatus;
+  timestamp: string; // "10:41:18" or "00:15"
+  timeSeconds: number; // For scrub synchronization
+  // Normalized bounding box [top, left, width, height] in percentages (0 to 100)
+  box: {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  };
+  attributes?: string[];
+  behaviorFlags?: string[];
+  notes?: string;
+  isSuspicious?: boolean;
+}
+
 export interface ActivityLogItem {
   id: string;
   timestamp: string;
@@ -170,6 +214,7 @@ export interface InvestigationCase {
   activityLog: ActivityLogItem[];
   learningRecord?: LearningRecord;
   similarCases?: CaseMemory[];
+  detectedEntities?: DetectedEntity[];
 }
 
 export interface AuthUser {

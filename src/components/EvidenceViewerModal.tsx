@@ -64,8 +64,57 @@ export const EvidenceViewerModal: React.FC<EvidenceViewerModalProps> = ({
             </div>
           )}
 
-          {/* Preview or Raw Content */}
-          {evidence.previewContent && (
+          {/* Video Player in Modal if video evidence */}
+          {evidence.type === 'video' && (evidence.videoUrl || evidence.videoBase64) && (
+            <div>
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Video Footage Playback</h4>
+              <div className="rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-md aspect-video flex items-center justify-center">
+                <video
+                  controls
+                  playsInline
+                  src={evidence.videoUrl || (evidence.videoBase64?.startsWith('data:') ? evidence.videoBase64 : `data:${evidence.videoMimeType || 'video/mp4'};base64,${evidence.videoBase64}`)}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Keyframe Visual Gallery (Option A) */}
+          {evidence.keyframes && evidence.keyframes.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Extracted Visual Keyframes ({evidence.keyframes.length}) — Option A
+                </h4>
+                <span className="text-[11px] font-mono text-cyan-800 bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded-lg">
+                  Multi-frame Visual Sampling
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {evidence.keyframes.map((kf, i) => (
+                  <div key={i} className="rounded-xl overflow-hidden border border-slate-200 bg-slate-950 relative group">
+                    <img src={kf.dataUrl} alt={`Keyframe ${kf.timestamp}`} className="w-full aspect-video object-cover" />
+                    <div className="absolute bottom-1 right-1 bg-slate-950/85 px-1.5 py-0.5 rounded text-[10px] font-mono text-cyan-300">
+                      {kf.timestamp}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Image Evidence Preview */}
+          {evidence.type === 'image' && evidence.previewContent?.startsWith('data:image/') && (
+            <div>
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Visual Artifact</h4>
+              <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-950 flex items-center justify-center max-h-80">
+                <img src={evidence.previewContent} alt={evidence.name} className="max-h-80 w-auto object-contain" />
+              </div>
+            </div>
+          )}
+
+          {/* Preview or Raw Content (non-media or text) */}
+          {evidence.previewContent && !evidence.previewContent.startsWith('data:') && (
             <div>
               <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Evidence Content / Raw Payload</h4>
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 font-mono text-xs text-cyan-300 overflow-x-auto whitespace-pre leading-relaxed max-h-60 shadow-inner">

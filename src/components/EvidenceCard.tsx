@@ -60,6 +60,11 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({
                   New Uncovered
                 </span>
               )}
+              {evidence.keyframes && evidence.keyframes.length > 0 && (
+                <span className="text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200">
+                  {evidence.keyframes.length} Keyframes
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-600 mt-1 leading-relaxed">{evidence.summary}</p>
           </div>
@@ -74,6 +79,27 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {/* Keyframe visual preview strip if present */}
+      {evidence.keyframes && evidence.keyframes.length > 0 && (
+        <div className="mt-3 pt-2.5 border-t border-slate-100">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            {evidence.keyframes.map((kf, i) => (
+              <div 
+                key={i} 
+                onClick={() => onView(evidence)}
+                className="relative w-16 h-10 rounded-lg overflow-hidden border border-slate-200 shrink-0 cursor-pointer hover:border-cyan-500 transition-colors"
+                title={`Keyframe at ${kf.timestamp}`}
+              >
+                <img src={kf.dataUrl} alt={`Keyframe ${kf.timestamp}`} className="w-full h-full object-cover" />
+                <span className="absolute bottom-0 right-0 bg-slate-950/80 px-1 text-[8px] font-mono text-cyan-300 rounded-tl">
+                  {kf.timestamp}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Metadata bar */}
       <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-mono">

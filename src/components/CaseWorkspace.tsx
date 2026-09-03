@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShieldAlert, 
   RotateCcw, 
@@ -11,9 +11,13 @@ import {
   Activity, 
   AlertTriangle,
   FolderOpen,
-  Sparkles
+  Sparkles,
+  Video,
+  Loader2,
+  Upload
 } from 'lucide-react';
-import { InvestigationCase, Evidence, TimelineEvent, InvestigationToolName, FeedbackRating, LearningRecord } from '../types';
+import { InvestigationCase, Evidence, TimelineEvent, InvestigationToolName, FeedbackRating, LearningRecord, EvidenceType } from '../types';
+import { extractKeyframesFromVideo, fileToBase64 } from '../utils/videoProcessor';
 import { VideoPlayer } from './VideoPlayer';
 import { EvidenceTimeline } from './EvidenceTimeline';
 import { EvidenceCard } from './EvidenceCard';
@@ -52,6 +56,97 @@ export const CaseWorkspace: React.FC<CaseWorkspaceProps> = ({
 
   // Tool execution state
   const [isInvestigating, setIsInvestigating] = useState<boolean>(false);
+  const [isUploadingMedia, setIsUploadingMedia] = useState<boolean>(false);
+  const [uploadStatusMsg, setUploadStatusMsg] = useState<string>('');
+  const uploadFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleCustomMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !caseData) return;
+
+    setIsUploadingMedia(true);
+    try {
+      const fileList = Array.from(files) as File[];
+      for (const file of fileList) {
+        const ext = file.name.split('.').pop()?.toLowerCase() || '';
+        let type: EvidenceType = 'text';
+        if (['mp4', 'mov', 'webm', 'avi'].includes(ext)) type = 'video';
+        else if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) type = 'image';
+        else if (['pdf'].includes(ext)) type = 'pdf';
+        else if (['csv'].includes(ext)) type = 'csv';
+        else if (['log', 'txt', 'json'].includes(ext)) type = 'log';
+
+        let keyframes: any[] = [];
+        let duration = 0;
+        let videoBase64: string | undefined = undefined;
+        let videoUrl: string | undefined = undefined;
+
+        if (type === 'video') {
+          setUploadStatusMsg(`Sampling keyframes for AI detection camera...`);
+          videoUrl = URL.createObjectURL(file);
+          try {
+            const extraction = await extractKeyframesFromVideo(file, 4);
+            keyframes = extraction.keyframes;
+            duration = Math.round(extraction.duration);
+          } catch (err) {
+            console.warn('Keyframe extraction warning:', err);
+          }
+
+          if (file.size <= 3 * 1024 * 1024) {
+            try {
+              videoBase64 = await fileToBase64(file);
+            } catch (err) {}
+          }
+        }
+
+        setUploadStatusMsg(`Uploading "${file.name}" to case...`);
+        await fetch(`/api/cases/${caseData.id}/evidence`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: file.name,
+            type,
+            size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+            summary: `Custom uploaded ${type} asset: ${file.name}.`,
+            videoUrl,
+            videoBase64,
+            videoMimeType: file.type || 'video/mp4',
+            keyframes,
+            duration,
+            keyDetails: [
+              duration ? `Video duration: ${duration}s` : 'Custom evidence',
+              keyframes.length ? `${keyframes.length} keyframes extracted (Option A)` : 'Custom asset',
+              videoBase64 ? 'Direct video stream attached (Option B)' : 'Analyzed by Gemini'
+            ]
+          })
+        });
+
+        if (type === 'video') {
+          setSelectedCamera(file.name);
+        }
+      }
+
+      setUploadStatusMsg('Running unconstrained multimodal Gemini analysis on video...');
+      const analyzeRes = await fetch(`/api/cases/${caseData.id}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const analyzeData = await analyzeRes.json();
+      if (analyzeData.case) {
+        setCaseData(analyzeData.case);
+      } else {
+        await fetchCase();
+      }
+      setCurrentTime(0);
+      onRefreshCases();
+    } catch (err) {
+      console.error('Custom video upload error:', err);
+    } finally {
+      setIsUploadingMedia(false);
+      setUploadStatusMsg('');
+      if (uploadFileInputRef.current) uploadFileInputRef.current.value = '';
+    }
+  };
 
   // Fetch case details
   const fetchCase = async () => {
@@ -308,6 +403,7 @@ export const CaseWorkspace: React.FC<CaseWorkspaceProps> = ({
             onSeek={(t) => setCurrentTime(t)}
             activeCamera={selectedCamera}
             onSelectCamera={(cam) => setSelectedCamera(cam)}
+            caseEvidence={caseData.evidence}
           />
 
           {/* Horizontal Interactive Evidence Timeline */}
@@ -333,12 +429,56 @@ export const CaseWorkspace: React.FC<CaseWorkspaceProps> = ({
 
           {/* Evidence Cards Stack */}
           <div className="mt-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
-                Attached Evidence Artifacts ({caseData.evidence.length})
-              </h3>
-              <span className="text-[11px] text-slate-500 font-mono">Chain-of-Custody Protected</span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+                  Attached Evidence Artifacts ({caseData.evidence.length})
+                </h3>
+                <span className="text-[11px] text-slate-500 font-mono">Chain-of-Custody Protected</span>
+              </div>
+
+              {/* Direct Video / Evidence Upload Action */}
+              <div className="flex items-center gap-2">
+                <input
+                  ref={uploadFileInputRef}
+                  type="file"
+                  multiple
+                  accept=".mp4,.mov,.webm,.jpg,.jpeg,.png,.pdf,.csv,.json,.log,.txt"
+                  onChange={handleCustomMediaUpload}
+                  className="hidden"
+                />
+                <button
+                  id="workspace-upload-video-btn"
+                  onClick={() => uploadFileInputRef.current?.click()}
+                  disabled={isUploadingMedia}
+                  className="px-3 py-1.5 rounded-xl bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                  title="Upload custom video footage or log artifacts for multimodal Gemini analysis"
+                >
+                  {isUploadingMedia ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-700" />
+                      <span className="text-[11px] font-mono">{uploadStatusMsg || 'Processing...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Video className="w-3.5 h-3.5 text-cyan-700" />
+                      <span>Upload Video / Artifact</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
+
+            {/* Media Upload Progress Banner */}
+            {isUploadingMedia && (
+              <div className="p-3 bg-cyan-50 border border-cyan-200 rounded-2xl flex items-center gap-3 text-xs text-cyan-900 animate-pulse font-mono">
+                <Loader2 className="w-4 h-4 animate-spin text-cyan-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold">Multimodal Ingestion Active</p>
+                  <p className="text-[11px] text-cyan-700 truncate">{uploadStatusMsg}</p>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2.5">
               {caseData.evidence.map((item) => {
